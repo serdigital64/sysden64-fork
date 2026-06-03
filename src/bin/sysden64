@@ -47,7 +47,7 @@ source "${SYSDEN64_PATH_BL64}/bashlib64-module-tm.bash" &&
 #
 
 # SysDen64 / Version
-readonly SYSDEN64_VERSION='4.13.0'
+readonly SYSDEN64_VERSION='4.14.0'
 # SysDen64 / Application configuration setup modules
 declare SYSDEN64_PATH_LIB="${SYSDEN64_PATH_LIB:-}"
 # SysDen64 / Application configuration boilerplates
@@ -120,7 +120,7 @@ SYSDEN64_MODULES_DEDICATED_DEFAULT+=' ssh'
 declare SYSDEN64_MODULES_SHARED_DEFAULT=''
 SYSDEN64_MODULES_SHARED_DEFAULT+=' alacritty'
 SYSDEN64_MODULES_SHARED_DEFAULT+=' ansible'
-SYSDEN64_MODULES_SHARED_DEFAULT+=' antigravity'
+SYSDEN64_MODULES_SHARED_DEFAULT+=' antigravityide'
 SYSDEN64_MODULES_SHARED_DEFAULT+=' atuin'
 SYSDEN64_MODULES_SHARED_DEFAULT+=' bash_completion'
 SYSDEN64_MODULES_SHARED_DEFAULT+=' bash_preexec'
@@ -350,7 +350,8 @@ function module_dedicated_setup_config() {
         "${module_etc}/${module_config}"
     fi
   else
-    module_dedicated_relink "$module_name" "${DEV_PATH_PROF_VAULT}/${module_name}" "$module_config" "$config_backup"
+    config_destination="${DEV_PATH_PROF_VAULT}/${module_name}"
+    module_dedicated_relink "$module_name" "$config_destination" "$config_backup"
   fi
 }
 
@@ -511,8 +512,7 @@ function module_dedicated_relink() {
   bl64_dbg_app_show_function "$@"
   local module="${1:-}"
   local base="${2:-}"
-  local config="${3:-}"
-  local target="${4:-}"
+  local target="${3:-}"
 
   bl64_check_parameter 'module' ||
     return $?
@@ -1287,7 +1287,7 @@ function initialize() {
 # Main
 #
 
-bl64_lib_script_version_set '7.5.1'
+bl64_lib_script_version_set '7.5.2'
 bl64_msg_help_usage_set '<-s|-l|-c|-n|-6|-u|-e|-w|-z|-t|-f|-g|-d|-r|-k> [-o Home] [-i Repo] [-p Profile] [-m Module] [-V Verbose] [-D Debug] [-h]'
 bl64_msg_help_about_set 'User configuration management tool'
 # shellcheck disable=SC2016
