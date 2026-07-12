@@ -6,7 +6,7 @@
 
 #
 # Content generated with: fzf --bash
-# Version: 0.74
+# Version: 0.53
 #
 
 ### key-bindings.bash ###
@@ -16,9 +16,9 @@
 #  / __/ / /_/ __/
 # /_/   /___/_/ key-bindings.bash
 #
+# - $FZF_TMUX_OPTS
 # - $FZF_CTRL_T_COMMAND
 # - $FZF_CTRL_T_OPTS
-# - $FZF_CTRL_R_COMMAND
 # - $FZF_CTRL_R_OPTS
 # - $FZF_ALT_C_COMMAND
 # - $FZF_ALT_C_OPTS
@@ -28,16 +28,15 @@ if [[ $- =~ i ]]; then
   # Key bindings
   # ------------
 
-  #----BEGIN shfmt
   #----BEGIN INCLUDE common.sh
   # NOTE: Do not directly edit this section, which is copied from "common.sh".
-  # To modify it, one can edit "common.sh" and run "./update.sh" to apply
+  # To modify it, one can edit "common.sh" and run "./update-common.sh" to apply
   # the changes. See code comments in "common.sh" for the implementation details.
 
   __fzf_defaults() {
-    builtin printf '%s\n' "--height ${FZF_TMUX_HEIGHT:-40%} --min-height 20+ --bind=ctrl-z:ignore $1"
+    printf '%s\n' "--height ${FZF_TMUX_HEIGHT:-40%} --min-height 20+ --bind=ctrl-z:ignore $1"
     command cat "${FZF_DEFAULT_OPTS_FILE-}" 2>/dev/null
-    builtin printf '%s\n' "${FZF_DEFAULT_OPTS-} $2"
+    printf '%s\n' "${FZF_DEFAULT_OPTS-} $2"
   }
 
   __fzf_exec_awk() {
@@ -48,10 +47,7 @@ if [[ $- =~ i ]]; then
       elif command -v mawk >/dev/null 2>&1; then
         local n x y z d
         IFS=' .' read -r n x y z d <<<$(command mawk -W version 2>/dev/null)
-        [[ $n == mawk ]] &&
-          (((x * 1000 + y) * 1000 + z >= 1003004)) 2>/dev/null &&
-          ((d >= 20230302)) 2>/dev/null &&
-          __fzf_awk=mawk
+        [[ $n == mawk ]] && ((d >= 20230302 && (x * 1000 + y) * 1000 + z >= 1003004)) && __fzf_awk=mawk
       fi
     fi
     LC_ALL=C exec "$__fzf_awk" "$@"
@@ -68,13 +64,13 @@ if [[ $- =~ i ]]; then
   }
 
   __fzfcmd() {
-    [[ -n ${TMUX_PANE-} ]] && { [[ ${FZF_TMUX:-0} != 0 ]] || [[ -n ${FZF_TMUX_OPTS-} ]]; } &&
+    [[ -n "${TMUX_PANE-}" ]] && { [[ "${FZF_TMUX:-0}" != 0 ]] || [[ -n "${FZF_TMUX_OPTS-}" ]]; } &&
       echo "fzf-tmux ${FZF_TMUX_OPTS:--d${FZF_TMUX_HEIGHT:-40%}} -- " || echo "fzf"
   }
 
   fzf-file-widget() {
     local selected="$(__fzf_select__ "$@")"
-    READLINE_LINE="${READLINE_LINE:0:READLINE_POINT}$selected${READLINE_LINE:READLINE_POINT}"
+    READLINE_LINE="${READLINE_LINE:0:$READLINE_POINT}$selected${READLINE_LINE:$READLINE_POINT}"
     READLINE_POINT=$((READLINE_POINT + ${#selected}))
   }
 
@@ -87,37 +83,19 @@ if [[ $- =~ i ]]; then
     ) && printf 'builtin cd -- %q' "$(builtin unset CDPATH && builtin cd -- "$dir" && builtin pwd)"
   }
 
-  __fzf_history_delete() {
-    [[ -s $1 ]] || return
-
-    local offsets
-    offsets=($(sort -rnu "$1"))
-    for offset in "${offsets[@]}"; do
-      builtin history -d "$offset"
-    done
-
-    if [[ ${#offsets[@]} -gt 0 ]] && shopt -q histappend; then
-      builtin history -w
-    fi
-  }
-
   if command -v perl >/dev/null; then
     __fzf_history__() {
-      local output script deletefile
-      deletefile=$(mktemp)
+      local output script
       script='BEGIN { getc; $/ = "\n\t"; $HISTCOUNT = $ENV{last_hist} + 1 } s/^[ *]//; s/\n/\n\t/gm; print $HISTCOUNT - $. . "\t$_" if !$seen{$_}++'
       output=$(
         set +o pipefail
         builtin fc -lnr -2147483648 |
           last_hist=$(HISTTIMEFORMAT='' builtin history 1) command perl -n -l0 -e "$script" |
-          FZF_DEFAULT_OPTS=$(__fzf_defaults "" "-n2..,.. --scheme=history --bind=ctrl-r:toggle-sort,alt-r:toggle-raw --wrap-sign '"$'\t'"↳ ' --highlight-line --bind 'shift-delete:execute-silent(cat {+f1} >> \"$deletefile\")+exclude-multi' --multi ${FZF_CTRL_R_OPTS-} --read0") \
+          FZF_DEFAULT_OPTS=$(__fzf_defaults "" "-n2..,.. --scheme=history --bind=ctrl-r:toggle-sort --wrap-sign '"$'\t'"↳ ' --highlight-line ${FZF_CTRL_R_OPTS-} +m --read0") \
           FZF_DEFAULT_OPTS_FILE='' $(__fzfcmd) --query "$READLINE_LINE"
-      )
-      __fzf_history_delete "$deletefile"
-      command rm -f "$deletefile"
-      [[ -n $output ]] || return
+      ) || return
       READLINE_LINE=$(command perl -pe 's/^\d*\t//' <<<"$output")
-      if [[ -z $READLINE_POINT ]]; then
+      if [[ -z "$READLINE_POINT" ]]; then
         echo "$READLINE_LINE"
       else
         READLINE_POINT=0x7fffffff
@@ -125,8 +103,7 @@ if [[ $- =~ i ]]; then
     }
   else # awk - fallback for POSIX systems
     __fzf_history__() {
-      local output script deletefile
-      deletefile=$(mktemp)
+      local output script
       [[ $(HISTTIMEFORMAT='' builtin history 1) =~ [[:digit:]]+ ]] # how many history entries
       script='function P(b) { ++n; sub(/^[ *]/, "", b); if (!seen[b]++) { printf "%d\t%s%c", '$((BASH_REMATCH + 1))' - n, b, 0 } }
     NR==1 { b = substr($0, 2); next }
@@ -137,14 +114,11 @@ if [[ $- =~ i ]]; then
         set +o pipefail
         builtin fc -lnr -2147483648 2>/dev/null | # ( $'\t '<lines>$'\n' )* ; <lines> ::= [^\n]* ( $'\n'<lines> )*
           __fzf_exec_awk "$script" |              # ( <counter>$'\t'<lines>$'\000' )*
-          FZF_DEFAULT_OPTS=$(__fzf_defaults "" "-n2..,.. --scheme=history --bind=ctrl-r:toggle-sort,alt-r:toggle-raw --wrap-sign '"$'\t'"↳ ' --highlight-line --bind 'shift-delete:execute-silent(cat {+f1} >> \"$deletefile\")+exclude-multi' --multi ${FZF_CTRL_R_OPTS-} --read0") \
+          FZF_DEFAULT_OPTS=$(__fzf_defaults "" "-n2..,.. --scheme=history --bind=ctrl-r:toggle-sort --wrap-sign '"$'\t'"↳ ' --highlight-line ${FZF_CTRL_R_OPTS-} +m --read0") \
           FZF_DEFAULT_OPTS_FILE='' $(__fzfcmd) --query "$READLINE_LINE"
-      )
-      __fzf_history_delete "$deletefile"
-      command rm -f "$deletefile"
-      [[ -n $output ]] || return
+      ) || return
       READLINE_LINE=${output#*$'\t'}
-      if [[ -z $READLINE_POINT ]]; then
+      if [[ -z "$READLINE_POINT" ]]; then
         echo "$READLINE_LINE"
       else
         READLINE_POINT=0x7fffffff
@@ -153,7 +127,7 @@ if [[ $- =~ i ]]; then
   fi
 
   # Required to refresh the prompt after fzf
-  bind -m emacs-standard '"\C-\e(": redraw-current-line'
+  bind -m emacs-standard '"\er": redraw-current-line'
 
   bind -m vi-command '"\C-z": emacs-editing-mode'
   bind -m vi-insert '"\C-z": emacs-editing-mode'
@@ -161,47 +135,36 @@ if [[ $- =~ i ]]; then
 
   if ((BASH_VERSINFO[0] < 4)); then
     # CTRL-T - Paste the selected file path into the command line
-    if [[ ${FZF_CTRL_T_COMMAND-x} != "" ]]; then
-      bind -m emacs-standard '"\C-t": " \C-b\C-k \C-u`__fzf_select__`\e\C-e\C-\e(\C-a\C-y\C-h\C-e\e \C-y\ey\C-x\C-x\C-f\C-y\ey\C-_"'
+    if [[ "${FZF_CTRL_T_COMMAND-x}" != "" ]]; then
+      bind -m emacs-standard '"\C-t": " \C-b\C-k \C-u`__fzf_select__`\e\C-e\er\C-a\C-y\C-h\C-e\e \C-y\ey\C-x\C-x\C-f"'
       bind -m vi-command '"\C-t": "\C-z\C-t\C-z"'
       bind -m vi-insert '"\C-t": "\C-z\C-t\C-z"'
     fi
 
     # CTRL-R - Paste the selected command from history into the command line
-    if [[ ${FZF_CTRL_R_COMMAND-x} != "" ]]; then
-      if [[ -n ${FZF_CTRL_R_COMMAND-} ]]; then
-        echo "warning: FZF_CTRL_R_COMMAND is set to a custom command, but custom commands are not yet supported for CTRL-R" >&2
-      fi
-      bind -m emacs-standard '"\C-r": "\C-e \C-u\C-y\ey\C-u`__fzf_history__`\e\C-e\C-\e("'
-      bind -m vi-command '"\C-r": "\C-z\C-r\C-z"'
-      bind -m vi-insert '"\C-r": "\C-z\C-r\C-z"'
-    fi
+    bind -m emacs-standard '"\C-r": "\C-e \C-u\C-y\ey\C-u`__fzf_history__`\e\C-e\er"'
+    bind -m vi-command '"\C-r": "\C-z\C-r\C-z"'
+    bind -m vi-insert '"\C-r": "\C-z\C-r\C-z"'
   else
     # CTRL-T - Paste the selected file path into the command line
-    if [[ ${FZF_CTRL_T_COMMAND-x} != "" ]]; then
+    if [[ "${FZF_CTRL_T_COMMAND-x}" != "" ]]; then
       bind -m emacs-standard -x '"\C-t": fzf-file-widget'
       bind -m vi-command -x '"\C-t": fzf-file-widget'
       bind -m vi-insert -x '"\C-t": fzf-file-widget'
     fi
 
     # CTRL-R - Paste the selected command from history into the command line
-    if [[ ${FZF_CTRL_R_COMMAND-x} != "" ]]; then
-      if [[ -n ${FZF_CTRL_R_COMMAND-} ]]; then
-        echo "warning: FZF_CTRL_R_COMMAND is set to a custom command, but custom commands are not yet supported for CTRL-R" >&2
-      fi
-      bind -m emacs-standard -x '"\C-r": __fzf_history__'
-      bind -m vi-command -x '"\C-r": __fzf_history__'
-      bind -m vi-insert -x '"\C-r": __fzf_history__'
-    fi
+    bind -m emacs-standard -x '"\C-r": __fzf_history__'
+    bind -m vi-command -x '"\C-r": __fzf_history__'
+    bind -m vi-insert -x '"\C-r": __fzf_history__'
   fi
 
   # ALT-C - cd into the selected directory
-  if [[ ${FZF_ALT_C_COMMAND-x} != "" ]]; then
-    bind -m emacs-standard '"\ec": " \C-b\C-k \C-u`__fzf_cd__`\e\C-e\C-\e(\C-m\C-y\C-h\e \C-y\ey\C-x\C-x\C-d\C-y\ey\C-_"'
+  if [[ "${FZF_ALT_C_COMMAND-x}" != "" ]]; then
+    bind -m emacs-standard '"\ec": " \C-b\C-k \C-u`__fzf_cd__`\e\C-e\er\C-m\C-y\C-h\e \C-y\ey\C-x\C-x\C-d"'
     bind -m vi-command '"\ec": "\C-z\ec\C-z"'
     bind -m vi-insert '"\ec": "\C-z\ec\C-z"'
   fi
-#----END shfmt
 
 fi
 ### end: key-bindings.bash ###
@@ -212,6 +175,8 @@ fi
 #  / __/ / /_/ __/
 # /_/   /___/_/ completion.bash
 #
+# - $FZF_TMUX                 (default: 0)
+# - $FZF_TMUX_OPTS            (default: empty)
 # - $FZF_COMPLETION_TRIGGER   (default: '**')
 # - $FZF_COMPLETION_OPTS      (default: empty)
 # - $FZF_COMPLETION_PATH_OPTS (default: empty)
@@ -236,16 +201,15 @@ if [[ $- =~ i ]]; then
 
   ###########################################################
 
-  #----BEGIN shfmt
   #----BEGIN INCLUDE common.sh
   # NOTE: Do not directly edit this section, which is copied from "common.sh".
-  # To modify it, one can edit "common.sh" and run "./update.sh" to apply
+  # To modify it, one can edit "common.sh" and run "./update-common.sh" to apply
   # the changes. See code comments in "common.sh" for the implementation details.
 
   __fzf_defaults() {
-    builtin printf '%s\n' "--height ${FZF_TMUX_HEIGHT:-40%} --min-height 20+ --bind=ctrl-z:ignore $1"
+    printf '%s\n' "--height ${FZF_TMUX_HEIGHT:-40%} --min-height 20+ --bind=ctrl-z:ignore $1"
     command cat "${FZF_DEFAULT_OPTS_FILE-}" 2>/dev/null
-    builtin printf '%s\n' "${FZF_DEFAULT_OPTS-} $2"
+    printf '%s\n' "${FZF_DEFAULT_OPTS-} $2"
   }
 
   __fzf_exec_awk() {
@@ -256,10 +220,7 @@ if [[ $- =~ i ]]; then
       elif command -v mawk >/dev/null 2>&1; then
         local n x y z d
         IFS=' .' read -r n x y z d <<<$(command mawk -W version 2>/dev/null)
-        [[ $n == mawk ]] &&
-          (((x * 1000 + y) * 1000 + z >= 1003004)) 2>/dev/null &&
-          ((d >= 20230302)) 2>/dev/null &&
-          __fzf_awk=mawk
+        [[ $n == mawk ]] && ((d >= 20230302 && (x * 1000 + y) * 1000 + z >= 1003004)) && __fzf_awk=mawk
       fi
     fi
     LC_ALL=C exec "$__fzf_awk" "$@"
@@ -267,9 +228,9 @@ if [[ $- =~ i ]]; then
   #----END INCLUDE
 
   __fzf_comprun() {
-    if [[ "$(type -t _fzf_comprun 2>&1)" == function ]]; then
+    if [[ "$(type -t _fzf_comprun 2>&1)" = function ]]; then
       _fzf_comprun "$@"
-    elif [[ -n ${TMUX_PANE-} ]] && { [[ ${FZF_TMUX:-0} != 0 ]] || [[ -n ${FZF_TMUX_OPTS-} ]]; }; then
+    elif [[ -n "${TMUX_PANE-}" ]] && { [[ "${FZF_TMUX:-0}" != 0 ]] || [[ -n "${FZF_TMUX_OPTS-}" ]]; }; then
       shift
       fzf-tmux ${FZF_TMUX_OPTS:--d${FZF_TMUX_HEIGHT:-40%}} -- "$@"
     else
@@ -281,13 +242,13 @@ if [[ $- =~ i ]]; then
   __fzf_orig_completion() {
     local l comp f cmd
     while read -r l; do
-      if [[ $l =~ ^(.*\ -F)\ *([^ ]*).*\ ([^ ]*)$ ]]; then
+      if [[ "$l" =~ ^(.*\ -F)\ *([^ ]*).*\ ([^ ]*)$ ]]; then
         comp="${BASH_REMATCH[1]}"
         f="${BASH_REMATCH[2]}"
         cmd="${BASH_REMATCH[3]}"
-        [[ $f == _fzf_* ]] && continue
-        builtin printf -v "_fzf_orig_completion_${cmd//[^A-Za-z0-9_]/_}" "%s" "${comp} %s ${cmd} #${f}"
-        if [[ $l == *" -o nospace "* ]] && [[ ${__fzf_nospace_commands-} != *" $cmd "* ]]; then
+        [[ "$f" = _fzf_* ]] && continue
+        printf -v "_fzf_orig_completion_${cmd//[^A-Za-z0-9_]/_}" "%s" "${comp} %s ${cmd} #${f}"
+        if [[ "$l" = *" -o nospace "* ]] && [[ ! "${__fzf_nospace_commands-}" = *" $cmd "* ]]; then
           __fzf_nospace_commands="${__fzf_nospace_commands-} $cmd "
         fi
       fi
@@ -316,7 +277,7 @@ if [[ $- =~ i ]]; then
     orig="${!orig_var-}"
     orig="${orig%#*}"
     [[ $orig == *' %s '* ]] || return 1
-    builtin printf -v REPLY "$orig" "$func"
+    printf -v REPLY "$orig" "$func"
   }
 
   _fzf_opts_completion() {
@@ -329,7 +290,6 @@ if [[ $- =~ i ]]; then
     +i --no-ignore-case
     +s --no-sort
     +x --no-extended
-    --accept-nth
     --ansi
     --bash
     --bind
@@ -343,89 +303,56 @@ if [[ $- =~ i ]]; then
     --expect
     --filepath-word
     --fish
-    --footer
-    --footer-border
-    --footer-label
-    --footer-label-pos
-    --freeze-left
-    --freeze-right
-    --gap
-    --gap-line
-    --ghost
-    --gutter
-    --gutter-raw
     --header
-    --header-border
     --header-first
-    --header-label
-    --header-label-pos
     --header-lines
-    --header-lines-border
     --height
     --highlight-line
     --history
     --history-size
     --hscroll-off
-    --id-nth
     --info
-    --info-command
-    --input-border
-    --input-label
-    --input-label-pos
     --jump-labels
     --keep-right
     --layout
     --listen
     --listen-unsafe
-    --list-border
-    --list-label
-    --list-label-pos
     --literal
     --man
     --margin
     --marker
-    --marker-multi-line
     --min-height
     --no-bold
+    --no-clear
     --no-hscroll
-    --no-input
-    --no-multi-line
+    --no-mouse
     --no-scrollbar
     --no-separator
+    --no-unicode
     --padding
     --pointer
     --preview
-    --preview-border
     --preview-label
     --preview-label-pos
     --preview-window
     --print-query
     --print0
     --prompt
-    --raw
     --read0
+    --reverse
     --scheme
     --scroll-off
-    --scrollbar
     --separator
-    --smart-case
-    --style
     --sync
     --tabstop
     --tac
-    --tail
     --tiebreak
     --tmux
     --track
     --version
-    --walker
-    --walker-root
-    --walker-skip
     --with-nth
     --with-shell
     --wrap
-    --wrap-sign
-    --preview-wrap-sign
     --zsh
     -0 --exit-0
     -1 --select-1
@@ -445,11 +372,11 @@ if [[ $- =~ i ]]; then
         return 0
         ;;
       --tiebreak)
-        COMPREPLY=($(compgen -W "length chunk pathname begin end index" -- "$cur"))
+        COMPREPLY=($(compgen -W "length chunk begin end index" -- "$cur"))
         return 0
         ;;
       --color)
-        COMPREPLY=($(compgen -W "dark light base16 16 bw no" -- "$cur"))
+        COMPREPLY=($(compgen -W "dark light 16 bw no" -- "$cur"))
         return 0
         ;;
       --layout)
@@ -460,21 +387,12 @@ if [[ $- =~ i ]]; then
         COMPREPLY=($(compgen -W "default right hidden inline inline-right" -- "$cur"))
         return 0
         ;;
-      --wrap)
-        COMPREPLY=($(compgen -W "char word" -- "$cur"))
-        return 0
-        ;;
-      --style)
-        COMPREPLY=($(compgen -W "default minimal full" -- "$cur"))
-        return 0
-        ;;
       --preview-window)
         COMPREPLY=($(compgen -W "
       default
       hidden
       nohidden
       wrap
-      wrap-word
       nowrap
       cycle
       nocycle
@@ -483,7 +401,6 @@ if [[ $- =~ i ]]; then
       left
       right
       rounded border border-rounded
-      border-line
       sharp border-sharp
       border-bold
       border-block
@@ -497,22 +414,20 @@ if [[ $- =~ i ]]; then
       border-left
       border-right
       follow
-      nofollow
-      info
-      noinfo" -- "$cur"))
+      nofollow" -- "$cur"))
         return 0
         ;;
-      --border | --list-border | --header-border | --header-lines-border | --footer-border | --input-border | --preview-border)
-        COMPREPLY=($(compgen -W "line rounded sharp bold block thinblock double horizontal vertical top bottom left right none" -- "$cur"))
+      --border)
+        COMPREPLY=($(compgen -W "rounded sharp bold block thinblock double horizontal vertical top bottom left right none" -- "$cur"))
         return 0
         ;;
-      --border-label-pos | --preview-label-pos | --list-label-pos | --header-label-pos | --footer-label-pos | --input-label-pos)
+      --border-label-pos | --preview-label-pos)
         COMPREPLY=($(compgen -W "center bottom top" -- "$cur"))
         return 0
         ;;
     esac
 
-    if [[ $cur =~ ^-|\+ ]]; then
+    if [[ "$cur" =~ ^-|\+ ]]; then
       COMPREPLY=($(compgen -W "${opts}" -- "$cur"))
       return 0
     fi
@@ -527,7 +442,7 @@ if [[ $- =~ i ]]; then
     orig_cmd="$1"
     if __fzf_orig_completion_get_orig_func "$cmd"; then
       "$REPLY" "$@"
-    elif [[ -n ${_fzf_completion_loader-} ]]; then
+    elif [[ -n "${_fzf_completion_loader-}" ]]; then
       orig_complete=$(complete -p "$orig_cmd" 2>/dev/null)
       $_fzf_completion_loader "$@"
       ret=$?
@@ -541,7 +456,7 @@ if [[ $- =~ i ]]; then
           __fzf_orig_completion_instantiate "$cmd" "${BASH_REMATCH[1]}" &&
           orig_complete=$REPLY
 
-        if [[ ${__fzf_nospace_commands-} == *" $orig_cmd "* ]]; then
+        if [[ "${__fzf_nospace_commands-}" = *" $orig_cmd "* ]]; then
           eval "${orig_complete/ -F / -o nospace -F }"
         else
           eval "$orig_complete"
@@ -561,53 +476,50 @@ if [[ $- =~ i ]]; then
     COMPREPLY=()
     trigger=${FZF_COMPLETION_TRIGGER-'**'}
     [[ $COMP_CWORD -ge 0 ]] && cur="${COMP_WORDS[COMP_CWORD]}"
-    if [[ $cur == *"$trigger" ]] && [[ $cur != *'$('* ]] && [[ $cur != *':='* ]] && [[ $cur != *'`'* ]]; then
+    if [[ "$cur" == *"$trigger" ]] && [[ $cur != *'$('* ]] && [[ $cur != *':='* ]] && [[ $cur != *'`'* ]]; then
       base=${cur:0:${#cur}-${#trigger}}
       eval "base=$base" 2>/dev/null || return
 
       dir=
-      [[ $base == *"/"* ]] && dir="$base"
+      [[ $base = *"/"* ]] && dir="$base"
       while true; do
-        if [[ -z $dir ]] || [[ -d $dir ]]; then
+        if [[ -z "$dir" ]] || [[ -d "$dir" ]]; then
           leftover=${base/#"$dir"/}
           leftover=${leftover/#\//}
-          [[ -z $dir ]] && dir='.'
-          [[ $dir != "/" ]] && dir="${dir/%\//}"
+          [[ -z "$dir" ]] && dir='.'
+          [[ "$dir" != "/" ]] && dir="${dir/%\//}"
           matches=$(
             export FZF_DEFAULT_OPTS=$(__fzf_defaults "--reverse --scheme=path" "${FZF_COMPLETION_OPTS-} $2")
             unset FZF_DEFAULT_COMMAND FZF_DEFAULT_OPTS_FILE
-            if [[ $1 =~ dir ]]; then
-              eval "rest=(${FZF_COMPLETION_DIR_OPTS-})"
-            else
-              eval "rest=(${FZF_COMPLETION_PATH_OPTS-})"
-            fi
             if declare -F "$1" >/dev/null; then
-              eval "$1 $(builtin printf %q "$dir")" | __fzf_comprun "$4" -q "$leftover" "${rest[@]}"
+              eval "$1 $(printf %q "$dir")" | __fzf_comprun "$4" -q "$leftover"
             else
               if [[ $1 =~ dir ]]; then
                 walker=dir,follow
+                eval "rest=(${FZF_COMPLETION_DIR_OPTS-})"
               else
                 walker=file,dir,follow,hidden
+                eval "rest=(${FZF_COMPLETION_PATH_OPTS-})"
               fi
               __fzf_comprun "$4" -q "$leftover" --walker "$walker" --walker-root="$dir" "${rest[@]}"
             fi | while read -r item; do
-              builtin printf "%q " "${item%$3}$3"
+              printf "%q " "${item%$3}$3"
             done
           )
           matches=${matches% }
-          [[ -z $3 ]] && [[ ${__fzf_nospace_commands-} == *" ${COMP_WORDS[0]} "* ]] && matches="$matches "
-          if [[ -n $matches ]]; then
+          [[ -z "$3" ]] && [[ "${__fzf_nospace_commands-}" = *" ${COMP_WORDS[0]} "* ]] && matches="$matches "
+          if [[ -n "$matches" ]]; then
             COMPREPLY=("$matches")
           else
             COMPREPLY=("$cur")
           fi
-          # To redraw line after fzf closes (builtin printf '\e[5n')
+          # To redraw line after fzf closes (printf '\e[5n')
           bind '"\e[0n": redraw-current-line' 2>/dev/null
-          builtin printf '\e[5n'
+          printf '\e[5n'
           return 0
         fi
         dir=$(command dirname "$dir")
-        [[ $dir =~ /$ ]] || dir="$dir"/
+        [[ "$dir" =~ /$ ]] || dir="$dir"/
       done
     else
       shift
@@ -623,15 +535,15 @@ if [[ $- =~ i ]]; then
     args=("$@")
     sep=
     for i in "${!args[@]}"; do
-      if [[ ${args[$i]} == -- ]]; then
+      if [[ "${args[$i]}" = -- ]]; then
         sep=$i
         break
       fi
     done
-    if [[ -n $sep ]]; then
+    if [[ -n "$sep" ]]; then
       str_arg=
       rest=("${args[@]:$((sep + 1)):${#args[@]}}")
-      args=("${args[@]:0:sep}")
+      args=("${args[@]:0:$sep}")
     else
       str_arg=$1
       args=()
@@ -646,7 +558,7 @@ if [[ $- =~ i ]]; then
     trigger=${FZF_COMPLETION_TRIGGER-'**'}
     cmd="${COMP_WORDS[0]}"
     cur="${COMP_WORDS[COMP_CWORD]}"
-    if [[ $cur == *"$trigger" ]] && [[ $cur != *'$('* ]] && [[ $cur != *':='* ]] && [[ $cur != *'`'* ]]; then
+    if [[ "$cur" == *"$trigger" ]] && [[ $cur != *'$('* ]] && [[ $cur != *':='* ]] && [[ $cur != *'`'* ]]; then
       cur=${cur:0:${#cur}-${#trigger}}
 
       selected=$(
@@ -655,13 +567,13 @@ if [[ $- =~ i ]]; then
           __fzf_comprun "${rest[0]}" "${args[@]}" -q "$cur" | eval "$post" | command tr '\n' ' '
       )
       selected=${selected% } # Strip trailing space not to repeat "-o nospace"
-      if [[ -n $selected ]]; then
+      if [[ -n "$selected" ]]; then
         COMPREPLY=("$selected")
       else
         COMPREPLY=("$cur")
       fi
       bind '"\e[0n": redraw-current-line' 2>/dev/null
-      builtin printf '\e[5n'
+      printf '\e[5n'
       return 0
     else
       _fzf_handle_dynamic_completion "$cmd" "${rest[@]}"
@@ -733,7 +645,7 @@ if [[ $- =~ i ]]; then
   #     # Set the local attribute for any non-local variable that is set by _known_hosts_real()
   #     local COMPREPLY=()
   #     _known_hosts_real ''
-  #     builtin printf '%s\n' "${COMPREPLY[@]}" | command sort -u --version-sort
+  #     printf '%s\n' "${COMPREPLY[@]}" | command sort -u --version-sort
   #   }
   if ! declare -F __fzf_list_hosts >/dev/null; then
     __fzf_list_hosts() {
@@ -804,7 +716,7 @@ if [[ $- =~ i ]]; then
         ;;
       *)
         local user=
-        [[ $2 =~ '@' ]] && user="${2%%@*}@"
+        [[ "$2" =~ '@' ]] && user="${2%%@*}@"
         _fzf_complete +m -- "$@" < <(__fzf_list_hosts | __fzf_exec_awk -v user="$user" '{print user $0}')
         ;;
     esac
@@ -942,7 +854,6 @@ if [[ $- =~ i ]]; then
       esac
     done
   }
-#----END shfmt
 
 fi
 ### end: completion.bash ###
